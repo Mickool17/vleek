@@ -5,6 +5,7 @@ python-dotenv==1.0.0
 groq==0.4.2
 stripe==7.8.0
 gunicorn==21.2.0
+numpy==1.24.3
 nltk==3.8.1
 beautifulsoup4==4.12.2
 scikit-learn==1.2.2
