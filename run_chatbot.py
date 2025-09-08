@@ -8,12 +8,14 @@ import os
 # Add current directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Import app at module level for gunicorn
+from valetkleen_chatbot_v2 import app, chatbot
+
 if __name__ == "__main__":
     print("LAUNCHING ValetKleen Professional Chatbot...")
     print("-" * 50)
     
     try:
-        from valetkleen_chatbot_v2 import app, chatbot
         
         print("SUCCESS: Chatbot system loaded successfully!")
         print(f"Knowledge base: {len(chatbot.knowledge_base.get('all_content', []))} items")
