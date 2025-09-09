@@ -2772,8 +2772,22 @@ CHATBOT_HTML = """
     </div>
 
     <script>
-        let sessionId = null;
+        // Generate or retrieve a unique session ID for this user
+        function getOrCreateSessionId() {
+            let storedId = localStorage.getItem('valetkleen_session_id');
+            if (!storedId) {
+                // Generate a new UUID for this user
+                storedId = 'sess_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+                localStorage.setItem('valetkleen_session_id', storedId);
+            }
+            return storedId;
+        }
+        
+        // Initialize session on page load
+        let sessionId = getOrCreateSessionId();
         let isFirstMessage = true;
+        
+        console.log('Session initialized:', sessionId);
 
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
@@ -2825,8 +2839,12 @@ CHATBOT_HTML = """
                 // Hide typing indicator
                 document.getElementById('typingIndicator').style.display = 'none';
                 
-                // Update session ID
-                sessionId = data.session_id;
+                // Update session ID if server provides a different one
+                if (data.session_id && data.session_id !== sessionId) {
+                    sessionId = data.session_id;
+                    localStorage.setItem('valetkleen_session_id', sessionId);
+                    console.log('Session updated:', sessionId);
+                }
                 
                 // Add bot response
                 addMessage(data.message, 'bot', data.suggestions);
@@ -2880,6 +2898,15 @@ CHATBOT_HTML = """
         function scrollToBottom() {
             const messagesContainer = document.getElementById('chatMessages');
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // Function to clear session and start fresh (useful for testing)
+        function clearSession() {
+            if (confirm('This will clear your cart and start a new session. Continue?')) {
+                localStorage.removeItem('valetkleen_session_id');
+                sessionId = getOrCreateSessionId();
+                location.reload();
+            }
         }
 
         // Add click event listeners to suggestion pills
