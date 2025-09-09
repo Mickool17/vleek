@@ -690,7 +690,7 @@ SERVICE_PREFERENCE: dry_cleaning"""
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                max_completion_tokens=200,
+                max_tokens=200,
                 top_p=1,
                 stream=False
             )
@@ -774,7 +774,7 @@ Rules:
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
-                max_completion_tokens=300,
+                max_tokens=300,
                 top_p=1,
                 stream=False
             )
@@ -2355,7 +2355,7 @@ Provide helpful, professional, and friendly responses using this accurate compan
                     {"role": "user", "content": user_input}
                 ],
                 temperature=0.7,
-                max_completion_tokens=500,
+                max_tokens=500,
                 top_p=1,
                 stream=False
             )
