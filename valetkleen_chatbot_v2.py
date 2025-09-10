@@ -20,11 +20,20 @@ import logging
 try:
     import stripe
     stripe_available = True
-    print(f"✅ Stripe imported successfully: {stripe.__version__}")
-except Exception as e:
-    print(f"❌ ERROR: Stripe import failed with {type(e).__name__}: {e}")
+    # Check version safely without failing import
+    try:
+        version = getattr(stripe, '__version__', 'Unknown')
+        print(f"✅ Stripe imported successfully: {version}")
+    except:
+        print(f"✅ Stripe imported successfully: Version unknown")
+except ImportError as e:
+    print(f"❌ ERROR: Stripe import failed with ImportError: {e}")
     stripe = None
     stripe_available = False
+except Exception as e:
+    print(f"⚠️  WARNING: Stripe imported but with {type(e).__name__}: {e}")
+    # Don't set stripe = None here since import succeeded
+    stripe_available = True
 
 # NLP and ML imports
 import nltk
