@@ -1369,23 +1369,31 @@ Please type **"confirm"** to proceed with your logistics service request."""
                     }
                 
                 checkout_session = stripe.checkout.Session.create(
-                payment_method_types=['card'],
-                line_items=line_items,
-                mode='payment',
-                success_url=f"http://localhost:5000/payment-success?session_id={session_id}&order_id={order_id}",
-                cancel_url=f"http://localhost:5000/payment-cancel?session_id={session_id}",
-                metadata={
-                    'order_id': order_id,
-                    'session_id': session_id,
-                    'customer_email': customer_info.get('email', ''),
-                    'customer_name': customer_info.get('name', ''),
-                    'order_type': 'regular_order',
-                    'pickup_date': pickup_info.get('pickup_date', ''),
-                    'pickup_time': pickup_info.get('pickup_time', ''),
-                    'delivery_date': pickup_info.get('delivery_date', ''),
-                    'delivery_time': pickup_info.get('delivery_time', '')
+                    payment_method_types=['card'],
+                    line_items=line_items,
+                    mode='payment',
+                    success_url=f"http://localhost:5000/payment-success?session_id={session_id}&order_id={order_id}",
+                    cancel_url=f"http://localhost:5000/payment-cancel?session_id={session_id}",
+                    metadata={
+                        'order_id': order_id,
+                        'session_id': session_id,
+                        'customer_email': customer_info.get('email', ''),
+                        'customer_name': customer_info.get('name', ''),
+                        'order_type': 'regular_order',
+                        'pickup_date': pickup_info.get('pickup_date', ''),
+                        'pickup_time': pickup_info.get('pickup_time', ''),
+                        'delivery_date': pickup_info.get('delivery_date', ''),
+                        'delivery_time': pickup_info.get('delivery_time', '')
+                    }
+                )
+                
+            except Exception as e:
+                self.logger.error(f"Checkout creation error: {type(e).__name__}: {e}")
+                return {
+                    'type': 'error',
+                    'message': '🚫 Payment processing failed. Please try again or contact support.',
+                    'show_options': ['Try Again', 'Start Over']
                 }
-            )
             
             # Store checkout session info
             session['stripe_session_id'] = checkout_session.id
