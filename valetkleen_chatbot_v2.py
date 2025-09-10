@@ -20,8 +20,9 @@ import logging
 try:
     import stripe
     stripe_available = True
-except ImportError as e:
-    print(f"Warning: Stripe import failed: {e}")
+    print(f"✅ Stripe imported successfully: {stripe.__version__}")
+except Exception as e:
+    print(f"❌ ERROR: Stripe import failed with {type(e).__name__}: {e}")
     stripe = None
     stripe_available = False
 
@@ -1319,8 +1320,13 @@ Please type **"confirm"** to proceed with your logistics service request."""
             
             # Get and validate Stripe API key
             stripe_key = os.getenv('STRIPE_SECRET_KEY')
+            self.logger.info(f"STRIPE KEY CHECK: Found key = {stripe_key is not None}, Length = {len(stripe_key) if stripe_key else 0}")
+            
             if not stripe_key:
                 self.logger.error("STRIPE_SECRET_KEY environment variable not set")
+                # Also log all environment variables to debug
+                env_vars = [k for k in os.environ.keys() if 'STRIPE' in k.upper()]
+                self.logger.error(f"Available STRIPE env vars: {env_vars}")
                 return {
                     'type': 'error',
                     'message': '🚫 Payment processing is not configured. Please contact our support team.',
@@ -1328,6 +1334,8 @@ Please type **"confirm"** to proceed with your logistics service request."""
                 }
             
             # Set Stripe API key - using LIVE key for production payments
+            self.logger.info(f"STRIPE MODULE CHECK: stripe = {stripe}, type = {type(stripe)}")
+            
             if stripe is None:
                 self.logger.error("Stripe module is None - likely not installed")
                 return {
@@ -1336,7 +1344,16 @@ Please type **"confirm"** to proceed with your logistics service request."""
                     'show_options': ['Try Again', 'Start Over']
                 }
             
-            stripe.api_key = stripe_key
+            try:
+                stripe.api_key = stripe_key
+                self.logger.info(f"STRIPE API KEY SET: Successfully set API key")
+            except Exception as e:
+                self.logger.error(f"STRIPE API KEY ERROR: {type(e).__name__}: {e}")
+                return {
+                    'type': 'error',
+                    'message': '🚫 Payment system configuration error.',
+                    'show_options': ['Try Again', 'Start Over']
+                }
             
             # Create checkout session
             checkout_session = stripe.checkout.Session.create(
