@@ -15,7 +15,15 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import logging
-import stripe
+
+# Stripe payment processing - with error handling
+try:
+    import stripe
+    stripe_available = True
+except ImportError as e:
+    print(f"Warning: Stripe import failed: {e}")
+    stripe = None
+    stripe_available = False
 
 # NLP and ML imports
 import nltk
@@ -1300,8 +1308,27 @@ Please type **"confirm"** to proceed with your logistics service request."""
             # Generate unique order ID
             order_id = f"VK_{datetime.now().strftime('%Y%m%d%H%M%S')}_{session_id[:8]}"
             
+            # Check if Stripe is available and properly configured
+            if not stripe_available or stripe is None:
+                self.logger.error("Stripe not available or failed to import")
+                return {
+                    'type': 'error',
+                    'message': '🚫 Payment processing is currently unavailable. Please try again later or contact our support team.',
+                    'show_options': ['Try Again', 'Start Over']
+                }
+            
+            # Get and validate Stripe API key
+            stripe_key = os.getenv('STRIPE_SECRET_KEY')
+            if not stripe_key:
+                self.logger.error("STRIPE_SECRET_KEY environment variable not set")
+                return {
+                    'type': 'error',
+                    'message': '🚫 Payment processing is not configured. Please contact our support team.',
+                    'show_options': ['Try Again', 'Start Over']
+                }
+            
             # Set Stripe API key - using LIVE key for production payments
-            stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+            stripe.api_key = stripe_key
             
             # Create checkout session
             checkout_session = stripe.checkout.Session.create(
