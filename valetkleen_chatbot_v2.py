@@ -1355,8 +1355,20 @@ Please type **"confirm"** to proceed with your logistics service request."""
                     'show_options': ['Try Again', 'Start Over']
                 }
             
-            # Create checkout session
-            checkout_session = stripe.checkout.Session.create(
+            # Create checkout session with error handling
+            try:
+                self.logger.info(f"STRIPE CHECKOUT CHECK: stripe.checkout = {stripe.checkout if hasattr(stripe, 'checkout') else 'NO CHECKOUT'}")
+                if hasattr(stripe, 'checkout') and hasattr(stripe.checkout, 'Session'):
+                    self.logger.info(f"STRIPE SESSION CHECK: stripe.checkout.Session = {stripe.checkout.Session}")
+                else:
+                    self.logger.error("STRIPE SESSION NOT FOUND: checkout.Session not available")
+                    return {
+                        'type': 'error',
+                        'message': '🚫 Payment system version issue. Please contact support.',
+                        'show_options': ['Try Again', 'Start Over']
+                    }
+                
+                checkout_session = stripe.checkout.Session.create(
                 payment_method_types=['card'],
                 line_items=line_items,
                 mode='payment',
