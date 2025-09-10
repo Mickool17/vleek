@@ -1328,6 +1328,14 @@ Please type **"confirm"** to proceed with your logistics service request."""
                 }
             
             # Set Stripe API key - using LIVE key for production payments
+            if stripe is None:
+                self.logger.error("Stripe module is None - likely not installed")
+                return {
+                    'type': 'error',
+                    'message': '🚫 Payment system not available. Please ensure Stripe is installed.',
+                    'show_options': ['Try Again', 'Start Over']
+                }
+            
             stripe.api_key = stripe_key
             
             # Create checkout session
