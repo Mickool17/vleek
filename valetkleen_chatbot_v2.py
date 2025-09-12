@@ -12,9 +12,11 @@ import hashlib
 import hmac
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import logging
+import calendar
+import re
 
 # Stripe payment processing - with error handling
 try:
@@ -53,6 +55,104 @@ import uuid
 
 # HTML parsing for website content extraction
 from bs4 import BeautifulSoup
+
+def parse_date_input(date_text: str) -> Optional[str]:
+    """Parse various date formats into a standardized format"""
+    if not date_text:
+        return None
+    
+    date_text = date_text.strip().lower()
+    today = datetime.now()
+    
+    # Handle relative dates
+    if date_text in ['today', 'now']:
+        return today.strftime('%Y-%m-%d')
+    elif date_text in ['tomorrow', 'tmrw']:
+        return (today + timedelta(days=1)).strftime('%Y-%m-%d')
+    elif 'next week' in date_text:
+        return (today + timedelta(days=7)).strftime('%Y-%m-%d')
+    
+    # Handle day names (Monday, Tuesday, etc.)
+    weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for i, day in enumerate(weekdays):
+        if day in date_text:
+            days_ahead = i - today.weekday()
+            if days_ahead <= 0:  # Target day already happened this week
+                days_ahead += 7
+            target_date = today + timedelta(days=days_ahead)
+            return target_date.strftime('%Y-%m-%d')
+    
+    # Handle various date formats
+    date_patterns = [
+        r'(\d{1,2})/(\d{1,2})/(\d{4})',  # MM/DD/YYYY
+        r'(\d{1,2})-(\d{1,2})-(\d{4})',  # MM-DD-YYYY
+        r'(\d{4})-(\d{1,2})-(\d{1,2})',  # YYYY-MM-DD
+        r'(\d{1,2})/(\d{1,2})',          # MM/DD (current year)
+        r'(\d{1,2})-(\d{1,2})',          # MM-DD (current year)
+    ]
+    
+    for pattern in date_patterns:
+        match = re.search(pattern, date_text)
+        if match:
+            try:
+                if len(match.groups()) == 3:  # Full date
+                    if pattern.startswith(r'(\d{4}'):  # YYYY-MM-DD
+                        year, month, day = map(int, match.groups())
+                    else:  # MM/DD/YYYY or MM-DD-YYYY
+                        month, day, year = map(int, match.groups())
+                else:  # MM/DD or MM-DD (current year)
+                    month, day = map(int, match.groups())
+                    year = today.year
+                
+                parsed_date = datetime(year, month, day)
+                # If date is in the past, assume next year
+                if parsed_date < today:
+                    parsed_date = datetime(year + 1, month, day)
+                
+                return parsed_date.strftime('%Y-%m-%d')
+            except ValueError:
+                continue
+    
+    # If no pattern matches, return the original text for manual handling
+    return date_text
+
+def parse_time_input(time_text: str) -> Optional[str]:
+    """Parse various time formats into a standardized format"""
+    if not time_text:
+        return None
+    
+    time_text = time_text.strip().lower()
+    
+    # Handle common time patterns
+    time_patterns = [
+        r'(\d{1,2}):(\d{2})\s*(am|pm)',  # 12:30 AM/PM
+        r'(\d{1,2})\s*(am|pm)',          # 12 AM/PM
+        r'(\d{1,2}):(\d{2})',            # 14:30 (24-hour)
+        r'(\d{1,2})\.(\d{2})',           # 14.30
+    ]
+    
+    for pattern in time_patterns:
+        match = re.search(pattern, time_text)
+        if match:
+            try:
+                if 'am' in time_text or 'pm' in time_text:
+                    hour = int(match.group(1))
+                    minute = int(match.group(2)) if len(match.groups()) > 2 and match.group(2) else 0
+                    
+                    if 'pm' in time_text and hour != 12:
+                        hour += 12
+                    elif 'am' in time_text and hour == 12:
+                        hour = 0
+                        
+                    return f"{hour:02d}:{minute:02d}"
+                else:
+                    hour = int(match.group(1))
+                    minute = int(match.group(2)) if len(match.groups()) > 1 else 0
+                    return f"{hour:02d}:{minute:02d}"
+            except ValueError:
+                continue
+    
+    return time_text
 
 # Download required NLTK data
 try:
@@ -937,12 +1037,34 @@ Rules:
         current_step = session.get('current_step', 'welcome')
         self.logger.info(f"DEBUG: Current step = '{current_step}', Intent = '{intent}', Input = '{user_input}'")
         
-        # Check for payment keywords FIRST (before any step handling)
-        user_input_lower = user_input.lower()
+        # Handle button clicks and special commands FIRST
+        user_input_lower = user_input.lower().strip()
+        
+        # Handle "Start Over" button - clear session and restart
+        if user_input_lower in ['start over', 'restart', 'begin again', 'new order']:
+            return self.handle_start_over(session_id)
+        
+        # Handle "Try Again" button - retry last action or go back a step  
+        if user_input_lower in ['try again', 'retry', 'try once more']:
+            return self.handle_try_again(session_id)
+        
+        # Handle session resumption gracefully
+        if current_step == 'welcome' and session.get('conversation_history'):
+            # User has existing conversation, offer to continue or start over
+            if len(session['conversation_history']) > 2:  # More than just initial messages
+                last_step = self.get_last_meaningful_step(session)
+                if last_step != 'welcome':
+                    return self.offer_session_resumption(session_id, last_step)
+        
+        # Check for payment keywords
         if 'pay now' in user_input_lower:
             return self.handle_payment(session_id)
         elif any(keyword in user_input_lower for keyword in ['proceed to checkout', 'checkout', 'complete order', 'finish order', 'place order now']):
             return self.handle_checkout(session_id)
+        
+        # Handle session resumption choices
+        if current_step == 'welcome' and user_input_lower in ['continue where i left off', 'start over']:
+            return self.handle_session_resumption_choice(user_input, session_id)
         
         # Handle order flow steps
         if current_step == 'selecting_service_type':
@@ -1186,19 +1308,49 @@ Rules:
                     'collecting': 'email'
                 }
         elif 'pickup_date' not in logistics_info:
-            logistics_info['pickup_date'] = user_input.strip()
-            return {
-                'message': "🕐 **Pickup Time (e.g., 2:00 PM or 14:00):**",
-                'type': 'logistics_info_collection',
-                'collecting': 'pickup_time'
-            }
+            # Parse the date using our new date parsing function
+            parsed_date = parse_date_input(user_input.strip())
+            if parsed_date:
+                logistics_info['pickup_date'] = parsed_date
+                # Convert back to readable format for confirmation
+                try:
+                    date_obj = datetime.strptime(parsed_date, '%Y-%m-%d')
+                    readable_date = date_obj.strftime('%A, %B %d, %Y')
+                    return {
+                        'message': f"Great! Pickup scheduled for {readable_date}.\n\n🕐 **Pickup Time (e.g., 2:00 PM or 14:00):**",
+                        'type': 'logistics_info_collection',
+                        'collecting': 'pickup_time'
+                    }
+                except:
+                    logistics_info['pickup_date'] = parsed_date
+                    return {
+                        'message': "🕐 **Pickup Time (e.g., 2:00 PM or 14:00):**",
+                        'type': 'logistics_info_collection',
+                        'collecting': 'pickup_time'
+                    }
+            else:
+                return {
+                    'message': "Please enter a valid date (e.g., Tomorrow, Monday, 12/15/2024, or Dec 15):",
+                    'type': 'logistics_info_collection',
+                    'collecting': 'pickup_date'
+                }
         elif 'pickup_time' not in logistics_info:
-            logistics_info['pickup_time'] = user_input.strip()
-            return {
-                'message': "🏪 **Name of the dry cleaning or laundry mart:**",
-                'type': 'logistics_info_collection',
-                'collecting': 'mart_name'
-            }
+            # Parse the time using our new time parsing function
+            parsed_time = parse_time_input(user_input.strip())
+            if parsed_time and parsed_time != user_input.strip():
+                logistics_info['pickup_time'] = parsed_time
+                return {
+                    'message': f"Perfect! Pickup time set for {parsed_time}.\n\n🏪 **Name of the dry cleaning or laundry mart:**",
+                    'type': 'logistics_info_collection',
+                    'collecting': 'mart_name'
+                }
+            else:
+                logistics_info['pickup_time'] = user_input.strip()
+                return {
+                    'message': "🏪 **Name of the dry cleaning or laundry mart:**",
+                    'type': 'logistics_info_collection',
+                    'collecting': 'mart_name'
+                }
         elif 'mart_name' not in logistics_info:
             logistics_info['mart_name'] = user_input.strip()
             return {
@@ -1260,23 +1412,133 @@ Please type **"confirm"** to proceed with your logistics service request."""
         collecting = pickup_info.get('collecting')
         
         if collecting == 'pickup_date':
-            pickup_info['pickup_date'] = user_input.strip()
-            pickup_info['collecting'] = 'pickup_time'
-            return {
-                'message': f"📅 Pickup date set: **{pickup_info['pickup_date']}**\n\n⏰ **Please provide your preferred pickup time** (e.g., 9:00 AM, 2:30 PM, Morning, Afternoon):",
-                'type': 'pickup_scheduling',
-                'suggestions': [
-                    "9:00 AM",
-                    "2:00 PM", 
-                    "Morning",
-                    "Afternoon"
-                ]
-            }
+            # Parse the date using our enhanced date parsing
+            parsed_date = parse_date_input(user_input.strip())
+            if parsed_date:
+                pickup_info['pickup_date'] = parsed_date
+                pickup_info['collecting'] = 'pickup_time'
+                
+                # Convert back to readable format for confirmation
+                try:
+                    date_obj = datetime.strptime(parsed_date, '%Y-%m-%d')
+                    readable_date = date_obj.strftime('%A, %B %d, %Y')
+                    return {
+                        'message': f"✅ **Pickup date confirmed:** {readable_date}\n\n⏰ **What time would you prefer for pickup?** (e.g., 9:00 AM, 2:30 PM, Morning, Afternoon):",
+                        'type': 'pickup_scheduling',
+                        'suggestions': [
+                            "9:00 AM",
+                            "11:00 AM",
+                            "2:00 PM", 
+                            "4:00 PM",
+                            "Morning (8 AM - 12 PM)",
+                            "Afternoon (12 PM - 6 PM)"
+                        ]
+                    }
+                except:
+                    pickup_info['pickup_date'] = parsed_date
+                    pickup_info['collecting'] = 'pickup_time'
+                    return {
+                        'message': f"✅ **Pickup date set:** {parsed_date}\n\n⏰ **What time would you prefer for pickup?**:",
+                        'type': 'pickup_scheduling',
+                        'suggestions': [
+                            "9:00 AM",
+                            "2:00 PM", 
+                            "Morning",
+                            "Afternoon"
+                        ]
+                    }
+            else:
+                return {
+                    'message': "Please enter a valid date (e.g., Tomorrow, Monday, 12/15/2024, or Dec 15):",
+                    'type': 'pickup_scheduling',
+                    'collecting': 'pickup_date',
+                    'suggestions': [
+                        "Tomorrow",
+                        "Monday",
+                        "Tuesday",
+                        "This Weekend"
+                    ]
+                }
         
         elif collecting == 'pickup_time':
-            pickup_info['pickup_time'] = user_input.strip()
+            # Parse the time using our enhanced time parsing
+            parsed_time = parse_time_input(user_input.strip())
+            if parsed_time:
+                pickup_info['pickup_time'] = parsed_time
+                pickup_info['collecting'] = 'delivery_date'
+                
+                return {
+                    'message': f"✅ **Pickup time confirmed:** {parsed_time}\n\n📅 **When would you like your items delivered back to you?** (Usually 1-2 days after pickup):",
+                    'type': 'pickup_scheduling',
+                    'collecting': 'delivery_date',
+                    'suggestions': [
+                        "Same day (if picked up before 10 AM)",
+                        "Next day",
+                        "2 days later",
+                        "This Weekend"
+                    ]
+                }
+            else:
+                pickup_info['pickup_time'] = user_input.strip()
+                pickup_info['collecting'] = 'delivery_date'
+                
+                return {
+                    'message': f"⏰ **Pickup time set:** {user_input.strip()}\n\n📅 **When would you like your items delivered back?**:",
+                    'type': 'pickup_scheduling',
+                    'collecting': 'delivery_date',
+                    'suggestions': [
+                        "Next day",
+                        "2 days later", 
+                        "This Weekend"
+                    ]
+                }
+        
+        elif collecting == 'delivery_date':
+            # Parse delivery date
+            parsed_date = parse_date_input(user_input.strip())
+            if parsed_date:
+                pickup_info['delivery_date'] = parsed_date
+                pickup_info['collecting'] = 'delivery_time'
+                
+                try:
+                    date_obj = datetime.strptime(parsed_date, '%Y-%m-%d')
+                    readable_date = date_obj.strftime('%A, %B %d, %Y')
+                    return {
+                        'message': f"✅ **Delivery date confirmed:** {readable_date}\n\n🕐 **What time would you prefer for delivery?**:",
+                        'type': 'pickup_scheduling',
+                        'collecting': 'delivery_time',
+                        'suggestions': [
+                            "9:00 AM",
+                            "11:00 AM",
+                            "2:00 PM", 
+                            "4:00 PM",
+                            "Evening (5 PM - 8 PM)"
+                        ]
+                    }
+                except:
+                    pickup_info['delivery_date'] = parsed_date
+                    pickup_info['collecting'] = 'delivery_time'
+                    return {
+                        'message': f"✅ **Delivery date set:** {parsed_date}\n\n🕐 **Preferred delivery time?**:",
+                        'type': 'pickup_scheduling',
+                        'collecting': 'delivery_time'
+                    }
+            else:
+                return {
+                    'message': "Please enter a valid delivery date:",
+                    'type': 'pickup_scheduling',
+                    'collecting': 'delivery_date'
+                }
+        
+        elif collecting == 'delivery_time':
+            # Parse delivery time and complete the checkout process
+            parsed_time = parse_time_input(user_input.strip())
+            if parsed_time:
+                pickup_info['delivery_time'] = parsed_time
+            else:
+                pickup_info['delivery_time'] = user_input.strip()
             
-            # Pickup scheduling complete, now create Stripe checkout
+            # All scheduling complete, now create Stripe checkout
             return self.create_stripe_checkout(session_id)
             
         return {
@@ -2446,6 +2708,150 @@ Provide helpful, professional, and friendly responses using this accurate compan
         except Exception as e:
             self.logger.error(f"LLM generation error: {e}")
             return "I'm here to help with your laundry and dry cleaning needs. Could you please rephrase your question?"
+    
+    # Session Management and Button Handler Methods
+    
+    def handle_start_over(self, session_id: str) -> Dict:
+        """Handle 'Start Over' button click - reset session completely"""
+        # Clear the existing session but keep the same session_id
+        self.customer_sessions[session_id] = {
+            'customer_info': {},
+            'cart': [],
+            'current_step': 'welcome',
+            'conversation_history': [],
+            'created_at': datetime.now().isoformat(),
+            'logistics_info': {},
+            'pickup_info': {}
+        }
+        
+        return {
+            'message': "🔄 **Starting Fresh!**\n\nWelcome to ValetKleen! I'm here to help you with all your laundry and dry cleaning needs.\n\n**How can I assist you today?**",
+            'type': 'welcome',
+            'suggestions': [
+                "Place an Order",
+                "What Services Do You Offer?",
+                "Pricing Information",
+                "Pickup & Delivery Info",
+                "Contact Information"
+            ]
+        }
+    
+    def handle_try_again(self, session_id: str) -> Dict:
+        """Handle 'Try Again' button click - retry or go back one step"""
+        session = self.customer_sessions[session_id]
+        current_step = session.get('current_step', 'welcome')
+        
+        if current_step == 'collecting_pickup_info':
+            # Go back to cart summary
+            session['current_step'] = 'selecting_items'
+            return self.show_cart_summary(session_id)
+        elif current_step == 'selecting_items':
+            # Go back to service selection
+            session['current_step'] = 'selecting_service'
+            return {
+                'message': "Let's try selecting your service again.\n\n**Which service would you like?**",
+                'type': 'service_selection',
+                'suggestions': [
+                    "👔 Dry Cleaning Services", 
+                    "🧺 Laundry Services"
+                ]
+            }
+        elif current_step == 'collecting_info':
+            # Reset customer info and start over
+            session['customer_info'] = {}
+            return {
+                'message': "Let's collect your information again.\n\n👤 **Your Name:**",
+                'type': 'info_collection',
+                'collecting': 'name'
+            }
+        else:
+            # Default: offer to restart
+            return {
+                'message': "Let's try again! What would you like to do?",
+                'type': 'general',
+                'suggestions': [
+                    "Place an Order",
+                    "What Services Do You Offer?",
+                    "Pricing Information",
+                    "Contact Information"
+                ]
+            }
+    
+    def get_last_meaningful_step(self, session: Dict) -> str:
+        """Get the last meaningful step from conversation history"""
+        history = session.get('conversation_history', [])
+        
+        # Look for the last step where user was actively engaged
+        for entry in reversed(history):
+            if 'bot' in entry:
+                message = entry['bot'].lower()
+                if 'cart' in message or 'checkout' in message:
+                    return 'selecting_items'
+                elif 'pickup' in message and 'time' in message:
+                    return 'collecting_pickup_info'
+                elif 'address' in message or 'phone' in message:
+                    return 'collecting_info'
+                elif 'service' in message:
+                    return 'selecting_service'
+        
+        return session.get('current_step', 'welcome')
+    
+    def offer_session_resumption(self, session_id: str, last_step: str) -> Dict:
+        """Offer user the option to continue previous conversation or start over"""
+        session = self.customer_sessions[session_id]
+        
+        # Generate context message based on last step
+        context_message = ""
+        if last_step == 'selecting_items':
+            cart_count = len(session.get('cart', []))
+            if cart_count > 0:
+                context_message = f"I see you had {cart_count} item(s) in your cart."
+            else:
+                context_message = "You were selecting items for your order."
+        elif last_step == 'collecting_pickup_info':
+            context_message = "You were scheduling your pickup and delivery."
+        elif last_step == 'collecting_info':
+            context_message = "You were providing your contact information."
+        elif last_step == 'selecting_service':
+            context_message = "You were choosing between our services."
+        else:
+            context_message = "We were in the middle of helping you."
+        
+        return {
+            'message': f"👋 **Welcome back!**\n\n{context_message}\n\n**Would you like to continue where you left off, or start a new order?**",
+            'type': 'session_resumption',
+            'suggestions': [
+                "Continue Where I Left Off",
+                "Start Over"
+            ]
+        }
+    
+    def handle_session_resumption_choice(self, user_input: str, session_id: str) -> Dict:
+        """Handle user's choice for session resumption"""
+        user_input_lower = user_input.lower()
+        session = self.customer_sessions[session_id]
+        
+        if 'continue' in user_input_lower or 'left off' in user_input_lower:
+            # Continue from last step
+            last_step = self.get_last_meaningful_step(session)
+            session['current_step'] = last_step
+            
+            if last_step == 'selecting_items':
+                return self.show_cart_summary(session_id)
+            elif last_step == 'collecting_pickup_info':
+                return {
+                    'message': "Great! Let's continue with your pickup scheduling.\n\n📅 **When would you like us to pick up your items?** (e.g., Tomorrow, Monday, 12/15/2024)",
+                    'type': 'pickup_scheduling',
+                    'collecting': 'pickup_date'
+                }
+            elif last_step == 'collecting_info':
+                # Check what info is still needed
+                return self.handle_info_collection("", session_id)
+            else:
+                return self.start_order_process(session_id)
+        else:
+            # Start over
+            return self.handle_start_over(session_id)
 
 # Flask Web Application
 app = Flask(__name__)
