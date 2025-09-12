@@ -861,6 +861,11 @@ Parse this message to extract:
 2. How many of each item
 3. Match items to the exact names from the available list above
 
+CRITICAL: Menu numbers (like "1.", "2.", "3.") at the beginning of item names are NOT quantities!
+- If user says "2. Medium Bag", they want 1x Medium Bag (the "2." is just the menu position)
+- If user says "I want 2 medium bags", they want 2x Medium Bag (quantity specified)
+- Numbers followed by a period (.) are menu numbers, NOT quantities
+
 IMPORTANT: Only match items from the {service_type} service list above. Do not match items from other services.
 
 Respond in this exact JSON format:
@@ -875,9 +880,11 @@ Respond in this exact JSON format:
 }}
 
 Rules:
+- IGNORE menu numbers (1., 2., 3., etc.) - these are NOT quantities
 - Only include items that clearly match the {service_type} available list
 - Use exact item names from the list above
 - Default quantity is 1 if not specified
+- Only treat explicit quantity words/numbers as quantities (e.g., "two bags", "3 shirts", "five items")
 - Be flexible with partial matches - if user says "small bag", match to "Small Bag (12 lb capacity)"
 - For laundry bags: "small bag" = "Small Bag", "medium bag" = "Medium Bag", "large bag" = "Large Bag", "king bag" = "King Size Premium Bag"
 - For comforters: match size keywords like "twin", "full", "queen", "king"
@@ -1093,7 +1100,7 @@ Rules:
         elif intent == 'place_order':
             return self.start_order_process(session_id)
         elif intent == 'services_inquiry':
-            return self.handle_services_inquiry()
+            return self.handle_services_inquiry(session_id)
         elif intent == 'pricing_inquiry':
             return self.handle_pricing_inquiry()
         elif intent == 'delivery_inquiry':
@@ -2246,8 +2253,15 @@ Please type **"confirm"** to proceed with your logistics service request."""
         summary += f"\n💰 **Total: ${total:.2f}**"
         return summary
     
-    def handle_services_inquiry(self) -> Dict:
+    def handle_services_inquiry(self, session_id: str = None) -> Dict:
         """Handle services inquiry"""
+        # Reset session state when making information queries
+        if session_id and session_id in self.customer_sessions:
+            session = self.customer_sessions[session_id]
+            # Only reset if we're in a checkout or order flow state
+            if session.get('current_step') in ['collecting_pickup_info', 'checkout', 'payment']:
+                session['current_step'] = 'welcome'
+        
         message = f"🧼 **What Services Do You Offer?**\n\nAt ValetKleen, we're proud to offer a range of convenient and high-quality services to make your life easier. Our main services include:\n\n**1. 🧺 Laundry Services** - We provide full-service wash, dry, and fold services using premium detergents and fabric softeners.\n\n**2. 👔 Dry Cleaning Services** - Our expert team offers professional dry cleaning for suits, dresses, and delicate fabrics.\n\n**3. 🚛 Pickup and Delivery** - Our convenient door-to-door service allows you to schedule pickups and deliveries at a time that fits your busy schedule."
         
         return {
@@ -2877,7 +2891,7 @@ CHATBOT_HTML = """
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: transparent;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             height: 100vh;
             display: flex;
             align-items: center;
@@ -2889,19 +2903,23 @@ CHATBOT_HTML = """
         .chat-container {
             width: 100%;
             height: 100vh;
-            background: transparent;
+            background: #ffffff;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            position: relative;
         }
         
         /* Header removed since website handles branding */
         
         .chat-messages {
             flex: 1;
-            padding: 15px;
+            padding: 20px;
             overflow-y: auto;
-            background: transparent;
+            background: linear-gradient(to bottom, #f8f9fa, #ffffff);
+            position: relative;
+            padding-bottom: 80px; /* Space for typing indicator */
+            scroll-behavior: smooth;
         }
         
         .message {
@@ -2931,11 +2949,11 @@ CHATBOT_HTML = """
         }
         
         .message.bot .message-bubble {
-            background: #f8f9fa;
+            background: linear-gradient(135deg, #f8f9fa, #ffffff);
             color: #2c3e50;
             border-bottom-left-radius: 5px;
-            border: 1px solid #e9ecef;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
         
         .message.user .message-bubble {
@@ -2993,13 +3011,14 @@ CHATBOT_HTML = """
         }
         
         .chat-input {
-            background: rgba(255, 255, 255, 0.95);
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.98), rgba(248, 249, 250, 0.98));
             backdrop-filter: blur(20px);
-            padding: 20px;
-            border-top: 1px solid rgba(233, 236, 239, 0.3);
+            padding: 16px 20px;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
             display: flex;
             gap: 12px;
             position: relative;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
         }
         
         .chat-input input {
@@ -3064,14 +3083,57 @@ CHATBOT_HTML = """
         
         .typing-indicator {
             display: none;
-            text-align: left;
-            margin-bottom: 15px;
+            position: absolute;
+            bottom: 10px;
+            left: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 12px 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid rgba(0,0,0,0.05);
+            z-index: 10;
         }
         
-        .typing-indicator .message-bubble {
-            background: #e0e0e0;
+        .typing-indicator-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
             color: #666;
-            padding: 12px 16px;
+            font-size: 14px;
+        }
+        
+        .typing-indicator-dots {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #007bff;
+            animation: typingDot 1.4s infinite;
+        }
+        
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes typingDot {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.7;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
         }
         
         .typing-dots {
@@ -3093,12 +3155,8 @@ CHATBOT_HTML = """
         .welcome-screen {
             text-align: center;
             padding: 40px 20px;
-            color: #666;
-        }
-        
-        .welcome-screen h2 {
-            color: #4CAF50;
-            margin-bottom: 20px;
+            max-width: 600px;
+            margin: 0 auto;
         }
         
         .bot-message {
@@ -3114,17 +3172,18 @@ CHATBOT_HTML = """
         }
         
         .bot-avatar {
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, #4CAF50, #45a049);
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #007bff, #0056b3);
             border-radius: 50%;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 16px;
-            margin-bottom: 8px;
+            font-size: 18px;
+            margin-bottom: 12px;
             animation: avatarBounce 0.5s ease;
+            box-shadow: 0 4px 12px rgba(0,123,255,0.3);
         }
         
         .suggestions-container {
@@ -3246,8 +3305,13 @@ CHATBOT_HTML = """
             </div>
             
             <div class="typing-indicator" id="typingIndicator">
-                <div class="message-bubble">
-                    <span class="typing-dots">ValetKleen is typing</span>
+                <div class="typing-indicator-content">
+                    <div class="typing-indicator-dots">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                    <span>ValetKleen is typing</span>
                 </div>
             </div>
         </div>
