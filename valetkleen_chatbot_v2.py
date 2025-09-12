@@ -1055,12 +1055,23 @@ Rules:
         if user_input_lower in ['try again', 'retry', 'try once more']:
             return self.handle_try_again(session_id)
         
-        # Handle session resumption gracefully
+        # Handle session resumption gracefully - only for actual order flows
         if current_step == 'welcome' and session.get('conversation_history'):
-            # User has existing conversation, offer to continue or start over
-            if len(session['conversation_history']) > 2:  # More than just initial messages
+            # Only offer resumption if user was actually in an order flow or has items in cart
+            cart = session.get('cart', [])
+            customer_info = session.get('customer_info', {})
+            pickup_info = session.get('pickup_info', {})
+            
+            # Check if user has meaningful progress (cart, customer info, or pickup info)
+            has_meaningful_progress = (
+                len(cart) > 0 or 
+                len(customer_info) > 0 or 
+                len(pickup_info) > 0
+            )
+            
+            if has_meaningful_progress and len(session['conversation_history']) > 2:
                 last_step = self.get_last_meaningful_step(session)
-                if last_step != 'welcome':
+                if last_step not in ['welcome', 'information']:
                     return self.offer_session_resumption(session_id, last_step)
         
         # Check for payment keywords
@@ -1099,18 +1110,18 @@ Rules:
             return self.handle_greeting()
         elif intent == 'place_order':
             return self.start_order_process(session_id)
-        elif intent == 'services_inquiry':
+        elif intent in ['services_inquiry', 'service_inquiry']:  # Handle both variants
             return self.handle_services_inquiry(session_id)
         elif intent == 'pricing_inquiry':
-            return self.handle_pricing_inquiry()
+            return self.handle_pricing_inquiry(session_id)
         elif intent == 'delivery_inquiry':
-            return self.handle_delivery_inquiry()
+            return self.handle_delivery_inquiry(session_id)
         elif intent == 'about_company':
-            return self.handle_about_inquiry()
+            return self.handle_about_inquiry(session_id)
         elif intent == 'contact_info':
-            return self.handle_contact_inquiry()
+            return self.handle_contact_inquiry(session_id)
         elif intent == 'process_inquiry':
-            return self.handle_process_inquiry()
+            return self.handle_process_inquiry(session_id)
         else:
             return self.handle_general_inquiry(user_input)
     
@@ -2275,8 +2286,15 @@ Please type **"confirm"** to proceed with your logistics service request."""
             ]
         }
     
-    def handle_pricing_inquiry(self) -> Dict:
+    def handle_pricing_inquiry(self, session_id: str = None) -> Dict:
         """Handle pricing inquiry"""
+        # Reset session state when making information queries
+        if session_id and session_id in self.customer_sessions:
+            session = self.customer_sessions[session_id]
+            # Only reset if we're in a checkout or order flow state
+            if session.get('current_step') in ['collecting_pickup_info', 'checkout', 'payment']:
+                session['current_step'] = 'welcome'
+        
         message = "💰 **Our Pricing:**\n\n🔹 **Transparent flat-rate pricing**\n🔹 **No hidden fees**\n🔹 **Delivery included**\n🔹 **First-time customer discounts**\n\n"
         
         # Add sample prices
@@ -2302,8 +2320,15 @@ Please type **"confirm"** to proceed with your logistics service request."""
             ]
         }
     
-    def handle_delivery_inquiry(self) -> Dict:
+    def handle_delivery_inquiry(self, session_id: str = None) -> Dict:
         """Handle delivery and pickup inquiry"""
+        # Reset session state when making information queries
+        if session_id and session_id in self.customer_sessions:
+            session = self.customer_sessions[session_id]
+            # Only reset if we're in a checkout or order flow state
+            if session.get('current_step') in ['collecting_pickup_info', 'checkout', 'payment']:
+                session['current_step'] = 'welcome'
+        
         delivery_info = self.knowledge_base.get('process', '')
         
         message = "🚛 **Pickup & Delivery:**\n\n"
@@ -2330,8 +2355,15 @@ Please type **"confirm"** to proceed with your logistics service request."""
             ]
         }
     
-    def handle_about_inquiry(self) -> Dict:
+    def handle_about_inquiry(self, session_id: str = None) -> Dict:
         """Handle about company inquiry"""
+        # Reset session state when making information queries
+        if session_id and session_id in self.customer_sessions:
+            session = self.customer_sessions[session_id]
+            # Only reset if we're in a checkout or order flow state
+            if session.get('current_step') in ['collecting_pickup_info', 'checkout', 'payment']:
+                session['current_step'] = 'welcome'
+        
         about_info = self.knowledge_base.get('about', '')
         
         message = "ℹ️ **About ValetKleen:**\n\n"
@@ -2359,8 +2391,14 @@ Please type **"confirm"** to proceed with your logistics service request."""
             ]
         }
     
-    def handle_contact_inquiry(self) -> Dict:
+    def handle_contact_inquiry(self, session_id: str = None) -> Dict:
         """Handle contact information inquiry"""
+        # Reset session state when making information queries
+        if session_id and session_id in self.customer_sessions:
+            session = self.customer_sessions[session_id]
+            # Only reset if we're in a checkout or order flow state
+            if session.get('current_step') in ['collecting_pickup_info', 'checkout', 'payment']:
+                session['current_step'] = 'welcome'
         
         message = "📞 **Contact ValetKleen:**\n\n"
         message += "**Phone:** 1-844-750-2444\n"
@@ -2461,8 +2499,15 @@ Please type **"confirm"** to proceed with your logistics service request."""
             ]
         }
     
-    def handle_process_inquiry(self) -> Dict:
+    def handle_process_inquiry(self, session_id: str = None) -> Dict:
         """Handle process/how it works inquiry"""
+        # Reset session state when making information queries
+        if session_id and session_id in self.customer_sessions:
+            session = self.customer_sessions[session_id]
+            # Only reset if we're in a checkout or order flow state
+            if session.get('current_step') in ['collecting_pickup_info', 'checkout', 'payment']:
+                session['current_step'] = 'welcome'
+        
         process_info = self.knowledge_base.get('process', '')
         
         message = "⚙️ **How ValetKleen Works:**\n\n"
