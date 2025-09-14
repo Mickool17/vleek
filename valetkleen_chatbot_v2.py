@@ -3285,6 +3285,9 @@ Provide helpful, professional, and friendly responses using this accurate compan
 app = Flask(__name__)
 app.secret_key = 'valetkleen_chatbot_secret_key_2024'
 
+# For WSGI deployment (Gunicorn, etc.)
+application = app
+
 # Initialize chatbot
 chatbot = ValetKleenChatbot()
 
