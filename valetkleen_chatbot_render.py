@@ -124,8 +124,7 @@ class ValetKleenChatbotRender:
         # Get API key from environment
         api_key = os.getenv('GROQ_API_KEY')
         if not api_key:
-            # Fallback to original key for existing deployments
-            api_key = "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"
+            raise ValueError("GROQ_API_KEY environment variable is required")
             
         self.groq_client = Groq(api_key=api_key)
         
