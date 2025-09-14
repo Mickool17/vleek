@@ -1202,8 +1202,24 @@ Rules:
         if user_input_lower in ['try again', 'retry', 'try once more']:
             return self.handle_try_again(session_id)
         
+        # Check for cart operations and navigation commands FIRST (before any other processing)
+        if user_input_lower in ['view full cart', 'view cart', 'show cart', 'cart']:
+            return self.handle_view_cart(session_id)
+        elif user_input_lower in ['remove item', 'delete item', 'remove from cart']:
+            return self.handle_remove_item_request(session_id)
+        elif user_input_lower in ['clear cart', 'empty cart', 'clear all items']:
+            return self.handle_clear_cart(session_id)
+        elif user_input_lower in ['add more items', 'add more', 'continue shopping']:
+            return self.handle_add_more_items(session_id)
+        
         # Handle session resumption gracefully - only for actual order flows
         if current_step == 'welcome' and session.get('conversation_history'):
+            # Check if this session has completed checkout and should be reset
+            if session.get('checkout_completed') or session.get('payment_pending'):
+                # Reset session after completed checkout
+                self.reset_session_after_checkout(session_id)
+                return self.handle_greeting()
+                
             # Only offer resumption if user was actually in an order flow or has items in cart
             cart = session.get('cart', [])
             customer_info = session.get('customer_info', {})
@@ -1221,14 +1237,6 @@ Rules:
                 if last_step not in ['welcome', 'information']:
                     return self.offer_session_resumption(session_id, last_step)
         
-        # Check for cart operations
-        if user_input_lower in ['view full cart', 'view cart', 'show cart', 'cart']:
-            return self.handle_view_cart(session_id)
-        elif user_input_lower in ['remove item', 'delete item', 'remove from cart']:
-            return self.handle_remove_item_request(session_id)
-        elif user_input_lower in ['clear cart', 'empty cart', 'clear all items']:
-            return self.handle_clear_cart(session_id)
-        
         # Check for payment keywords
         if 'pay now' in user_input_lower:
             return self.handle_payment(session_id)
@@ -1238,6 +1246,11 @@ Rules:
         # Handle session resumption choices
         if current_step == 'welcome' and user_input_lower in ['continue where i left off', 'start over']:
             return self.handle_session_resumption_choice(user_input, session_id)
+        
+        # Handle continue where left off directly (in case it's not caught above)
+        if user_input_lower in ['continue where i left off', 'continue where you left off', 'resume', 'continue']:
+            if current_step == 'welcome':
+                return self.handle_session_resumption_choice(user_input, session_id)
         
         # Handle order flow steps
         if current_step == 'selecting_service_type':
@@ -1891,6 +1904,11 @@ Please type **"confirm"** to proceed with your logistics service request."""
                 self.logger.info(f"Order pending notification email sent for {order_id}")
             except Exception as e:
                 self.logger.error(f"Failed to send order pending notification email for {order_id}: {e}")
+            
+            # Mark session as payment pending so it can be reset later
+            session['payment_pending'] = True
+            session['order_id'] = order_id
+            self.customer_sessions[session_id] = session
             
             return {
                 'message': f"✅ **Order Ready for Payment!**\n\n📋 **Order Summary:**\n{self.format_order_summary(cart, pickup_info)}\n\n💰 **Total: ${total_amount:.2f}**\n\n🔗 **Payment Link:**\n[Click here to complete your secure payment →]({checkout_session.url})\n\n*Secure payment powered by Stripe*",
@@ -2627,6 +2645,47 @@ Please type **"confirm"** to proceed with your logistics service request."""
                 "💰 Pricing Information"
             ]
         }
+    
+    def handle_add_more_items(self, session_id: str) -> Dict:
+        """Handle add more items navigation"""
+        session = self.customer_sessions[session_id]
+        selected_service_type = session.get('selected_service_type')
+        
+        if not selected_service_type:
+            # If no service type selected, show service type selection
+            return self.start_order_process(session_id)
+        
+        # Set current step back to selecting items
+        session['current_step'] = 'selecting_items'
+        session['selected_service'] = selected_service_type  # Set this for consistency
+        self.customer_sessions[session_id] = session
+        
+        # Show the service-specific items menu
+        if selected_service_type == 'dry_cleaning':
+            return self.show_dry_cleaning_menu()
+        elif selected_service_type == 'laundry':
+            return self.show_laundry_menu()
+        else:
+            # Fallback for any other service type
+            service_name = "dry cleaning" if selected_service_type == "dry_cleaning" else "laundry"
+            return {
+                'message': f"What {service_name} items would you like? You can tell me specifically (e.g., '2 dress shirts') or choose from the menu:",
+                'type': 'item_selection',
+                'suggestions': self.get_item_suggestions(selected_service_type)
+            }
+    
+    def reset_session_after_checkout(self, session_id: str) -> None:
+        """Reset session state after successful checkout"""
+        if session_id in self.customer_sessions:
+            # Keep only basic session info, clear order-related data
+            old_session = self.customer_sessions[session_id]
+            self.customer_sessions[session_id] = {
+                'session_id': session_id,
+                'conversation_history': [],
+                'current_step': 'welcome',
+                'created_at': old_session.get('created_at', datetime.now().isoformat())
+            }
+            self.logger.info(f"Session {session_id} reset after checkout")
     
     def handle_services_inquiry(self, session_id: str = None) -> Dict:
         """Handle services inquiry"""
