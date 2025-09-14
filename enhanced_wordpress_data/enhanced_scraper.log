@@ -1,0 +1,36 @@
+2025-09-05 03:00:52,835 - INFO - Logging into WordPress...
+2025-09-07 13:52:36,713 - INFO - 🚀 Starting Enhanced WordPress Scraping...
+2025-09-07 13:52:36,713 - INFO - Logging into WordPress...
+2025-09-07 13:52:44,503 - INFO - ✅ WordPress login successful!
+2025-09-07 13:52:48,635 - INFO - 🔍 Found custom post type: product
+2025-09-07 13:52:48,635 - INFO - 🔍 Found custom post type: shop_coupon
+2025-09-07 13:52:48,635 - INFO - 🔍 Found custom post type: elementor_library
+2025-09-07 13:52:48,635 - INFO - 🔍 Found custom post type: elementor_library#add_new
+2025-09-07 13:52:48,636 - INFO - 🔍 Found custom post type: templately_library
+2025-09-07 13:52:48,636 - INFO - 🔍 Found custom post type: elementor-hf
+2025-09-07 13:52:48,638 - INFO - 🔍 Found custom post type: shop_order
+2025-09-07 13:52:48,638 - INFO - 📋 Total post types found: 9 - ['post', 'page', 'product', 'shop_coupon', 'elementor_library', 'elementor_library#add_new', 'templately_library', 'elementor-hf', 'shop_order']
+2025-09-07 13:52:48,638 - INFO - 🔍 Scraping post type: post
+2025-09-07 13:52:48,638 - INFO - 🔍 Scraping post page 1: https://www.valetkleen.com/wp-admin/edit.php?paged=1
+2025-09-07 13:52:52,858 - INFO - 📄 Found 0 post items
+2025-09-07 13:52:52,858 - INFO - 🔍 Scraping post type: page
+2025-09-07 13:52:52,858 - INFO - 🔍 Scraping page page 1: https://www.valetkleen.com/wp-admin/edit.php?post_type=page&paged=1
+2025-09-07 13:52:54,216 - INFO - 📄 Found 19 page items
+2025-09-07 13:52:54,216 - INFO - 📄 Processing 1/19: 404 Page
+2025-09-07 13:52:54,217 - INFO - 📖 Getting content for: 404 Page
+2025-09-07 13:52:57,747 - INFO - 📄 Processing 2/19: About Us
+2025-09-07 13:52:57,747 - INFO - 📖 Getting content for: About Us
+2025-09-07 13:53:00,764 - INFO - 📄 Processing 3/19: Blog
+2025-09-07 13:53:00,765 - INFO - 📖 Getting content for: Blog
+2025-09-07 13:53:03,896 - INFO - 📄 Processing 4/19: Cart
+2025-09-07 13:53:03,896 - INFO - 📖 Getting content for: Cart
+2025-09-07 13:53:06,968 - INFO - 📄 Processing 5/19: Checkout
+2025-09-07 13:53:06,968 - INFO - 📖 Getting content for: Checkout
+2025-09-07 13:53:10,746 - INFO - 📄 Processing 6/19: Contact Us
+2025-09-07 13:53:10,746 - INFO - 📖 Getting content for: Contact Us
+2025-09-07 13:53:13,733 - INFO - 📄 Processing 7/19: Do you have a cleaner or laundry service you Prefer?
+2025-09-07 13:53:13,734 - INFO - 📖 Getting content for: Do you have a cleaner or laundry service you Prefer?
+2025-09-07 13:53:16,752 - INFO - 📄 Processing 8/19: Dry Cleaning Services
+2025-09-07 13:53:16,752 - INFO - 📖 Getting content for: Dry Cleaning Services
+2025-09-07 13:53:19,822 - INFO - 📄 Processing 9/19: FAQ
+2025-09-07 13:53:19,822 - INFO - 📖 Getting content for: FAQ

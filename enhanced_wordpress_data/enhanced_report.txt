@@ -1,0 +1,44 @@
+======================================================================
+🚀 ENHANCED WORDPRESS DATA SCRAPING REPORT
+======================================================================
+Generated: 2025-09-05 03:05:24
+WordPress Site: https://www.valetkleen.com
+
+📊 CONTENT STATISTICS:
+- Posts: 0
+- Pages: 20
+- Custom Post Types: 77
+- Widgets: 0
+- Menu Items: 10
+- Total Content Items: 96
+
+📋 CONTENT BY TYPE:
+- Page: 20 items
+- Product: 40 items
+- Elementor_Library: 17 items
+- Elementor_Library#Add_New: 17 items
+- Elementor-Hf: 2 items
+
+📚 LARGEST CONTENT PIECES:
+1. Terms of Service (87593 chars) - page
+2. Privacy Policy (11571 chars) - page
+3. About Us (2837 chars) - page
+4. Shop (2505 chars) - page
+5. Single post (2385 chars) - page
+6. Dry Cleaning Services (1910 chars) - page
+7. Home (1707 chars) - page
+8. Services (1707 chars) - elementor_library
+9. Metform Booking (1707 chars) - elementor_library
+10. Service Details (1707 chars) - elementor_library
+
+📁 EXPORTED FILES:
+- enhanced_complete_data.json (Complete raw data)
+- chatbot_training_data.json (🤖 CHATBOT READY)
+- all_content_readable.txt (Human readable)
+- all_posts_enhanced.csv (Posts summary)
+- content_summary.csv (Content overview)
+
+📈 CONTENT ANALYSIS:
+- Total Characters: 184,499
+- Average Content Length: 1,921 characters
+- Estimated Reading Time: 184 minutes
