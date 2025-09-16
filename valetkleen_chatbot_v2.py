@@ -1749,14 +1749,116 @@ Please type **"confirm"** to proceed with your logistics service request."""
                 }
         
         elif collecting == 'delivery_time':
-            # Parse delivery time and complete the checkout process
+            # Parse delivery time
             parsed_time = parse_time_input(user_input.strip())
             if parsed_time:
                 pickup_info['delivery_time'] = parsed_time
             else:
                 pickup_info['delivery_time'] = user_input.strip()
             
-            # All scheduling complete, now create Stripe checkout
+            # Move to tipping selection
+            pickup_info['collecting'] = 'tip_selection'
+            
+            # Calculate cart total
+            cart = session.get('cart', [])
+            subtotal = sum(item.get('total_price', item.get('price', 0) * item.get('quantity', 1)) for item in cart)
+            
+            # Calculate tip suggestions
+            tip_10 = subtotal * 0.10
+            tip_15 = subtotal * 0.15
+            tip_20 = subtotal * 0.20
+            
+            return {
+                'message': f"✅ **All scheduling complete!**\n\n💰 **Order Subtotal: ${subtotal:.2f}**\n\n💝 **Would you like to add a tip for our team?**\n\nYour generosity helps us maintain excellent service and rewards our hardworking staff.",
+                'type': 'tip_selection',
+                'suggestions': [
+                    f"💵 10% - ${tip_10:.2f}",
+                    f"💵 15% - ${tip_15:.2f}",
+                    f"💵 20% - ${tip_20:.2f}",
+                    "No tip",
+                    "Custom amount"
+                ]
+            }
+        
+        elif collecting == 'tip_selection':
+            # Handle tip selection
+            cart = session.get('cart', [])
+            subtotal = sum(item.get('total_price', item.get('price', 0) * item.get('quantity', 1)) for item in cart)
+            
+            tip_amount = 0
+            processed_input = user_input.lower().strip()
+            
+            if 'no tip' in processed_input or 'no' == processed_input:
+                tip_amount = 0
+            elif '10%' in processed_input:
+                tip_amount = subtotal * 0.10
+            elif '15%' in processed_input:
+                tip_amount = subtotal * 0.15
+            elif '20%' in processed_input:
+                tip_amount = subtotal * 0.20
+            elif 'custom' in processed_input:
+                pickup_info['collecting'] = 'custom_tip'
+                return {
+                    'message': "💵 **Enter custom tip amount** (e.g., 5, 10.50):",
+                    'type': 'tip_input',
+                    'suggestions': ["5", "10", "15", "25"]
+                }
+            else:
+                # Try to parse as a number
+                try:
+                    tip_amount = float(processed_input.replace('$', '').strip())
+                except:
+                    return {
+                        'message': "Please select a tip option or enter a custom amount:",
+                        'type': 'tip_selection',
+                        'suggestions': [
+                            f"💵 10% - ${subtotal * 0.10:.2f}",
+                            f"💵 15% - ${subtotal * 0.15:.2f}",
+                            f"💵 20% - ${subtotal * 0.20:.2f}",
+                            "No tip"
+                        ]
+                    }
+            
+            # Store tip amount and proceed to checkout
+            session['tip_amount'] = tip_amount
+            total_with_tip = subtotal + tip_amount
+            
+            if tip_amount > 0:
+                message = f"✨ **Thank you for your generosity!**\n\n💰 **Final Total: ${total_with_tip:.2f}**\n(Subtotal: ${subtotal:.2f} + Tip: ${tip_amount:.2f})\n\n🔄 **Processing checkout...**"
+            else:
+                message = f"✅ **Proceeding to checkout**\n\n💰 **Total: ${subtotal:.2f}**\n\n🔄 **Processing...**"
+            
+            # Create Stripe checkout with tip included
+            checkout_result = self.create_stripe_checkout(session_id)
+            checkout_result['message'] = message + "\n\n" + checkout_result.get('message', '')
+            return checkout_result
+        
+        elif collecting == 'custom_tip':
+            # Handle custom tip amount
+            try:
+                tip_amount = float(user_input.replace('$', '').strip())
+                if tip_amount < 0:
+                    tip_amount = 0
+                
+                session['tip_amount'] = tip_amount
+                cart = session.get('cart', [])
+                subtotal = sum(item.get('total_price', item.get('price', 0) * item.get('quantity', 1)) for item in cart)
+                total_with_tip = subtotal + tip_amount
+                
+                message = f"✨ **Thank you for the ${tip_amount:.2f} tip!**\n\n💰 **Final Total: ${total_with_tip:.2f}**\n(Subtotal: ${subtotal:.2f} + Tip: ${tip_amount:.2f})\n\n🔄 **Processing checkout...**"
+                
+                # Create Stripe checkout with custom tip
+                checkout_result = self.create_stripe_checkout(session_id)
+                checkout_result['message'] = message + "\n\n" + checkout_result.get('message', '')
+                return checkout_result
+            except ValueError:
+                return {
+                    'message': "Please enter a valid tip amount (numbers only):",
+                    'type': 'tip_input',
+                    'suggestions': ["5", "10", "15", "No tip"]
+                }
+            
+            # All scheduling complete with tip, now create Stripe checkout
             return self.create_stripe_checkout(session_id)
             
         return {
@@ -1772,16 +1874,16 @@ Please type **"confirm"** to proceed with your logistics service request."""
             customer_info = session.get('customer_info', {})
             pickup_info = session.get('pickup_info', {})
             
-            # Calculate total and create line items
+            # Calculate total with tip and create line items
             line_items = []
-            total_amount = 0
+            subtotal = 0
             
             for item in cart:
                 item_name = item.get('name', 'Unknown Item')
                 quantity = item.get('quantity', 1)
                 unit_price = item.get('price', 0)
                 total_price = item.get('total_price', unit_price * quantity)
-                total_amount += total_price
+                subtotal += total_price
                 
                 line_items.append({
                     'price_data': {
@@ -1794,6 +1896,23 @@ Please type **"confirm"** to proceed with your logistics service request."""
                     },
                     'quantity': 1,
                 })
+            
+            # Add tip as a line item if present
+            tip_amount = session.get('tip_amount', 0)
+            if tip_amount > 0:
+                line_items.append({
+                    'price_data': {
+                        'currency': 'usd',
+                        'product_data': {
+                            'name': '💝 Gratuity for Service Team',
+                            'description': 'Thank you for supporting our hardworking staff!',
+                        },
+                        'unit_amount': int(tip_amount * 100),  # Convert to cents
+                    },
+                    'quantity': 1,
+                })
+            
+            total_amount = subtotal + tip_amount
             
             # Generate unique order ID
             order_id = f"VK_{datetime.now().strftime('%Y%m%d%H%M%S')}_{session_id[:8]}"
@@ -2696,7 +2815,7 @@ Please type **"confirm"** to proceed with your logistics service request."""
             if session.get('current_step') in ['collecting_pickup_info', 'checkout', 'payment']:
                 session['current_step'] = 'welcome'
         
-        message = f"🧼 **What Services Do You Offer?**\n\nAt ValetKleen, we're proud to offer a range of convenient and high-quality services to make your life easier. Our main services include:\n\n**1. 🧺 Laundry Services** - We provide full-service wash, dry, and fold services using premium detergents and fabric softeners.\n\n**2. 👔 Dry Cleaning Services** - Our expert team offers professional dry cleaning for suits, dresses, and delicate fabrics.\n\n**3. 🚛 Pickup and Delivery** - Our convenient door-to-door service allows you to schedule pickups and deliveries at a time that fits your busy schedule."
+        message = f"🧼 **What Services Do You Offer?**\n\nAt ValetKleen, we're proud to offer a range of convenient and high-quality services to make your life easier. Our main services include:\n\n**1. 🧺 Laundry Services** - We provide full-service wash, dry, and fold services using premium detergents and fabric softeners.\n\n**2. 👔 Dry Cleaning Services** - Our expert team offers professional dry cleaning for suits, dresses, and delicate fabrics.\n\n**3. 🚛 Pickup and Delivery** - We offer convenient pickup and delivery services, so you can continue using your preferred cleaner without leaving your home."
         
         return {
             'message': message,
